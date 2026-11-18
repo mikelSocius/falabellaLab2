@@ -27,7 +27,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "sentry-sdk[fastapi]>=1.38.0",
     "prometheus-fastapi-instrumentator>=6.1.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.4",
 ]
 
 [project.optional-dependencies]
