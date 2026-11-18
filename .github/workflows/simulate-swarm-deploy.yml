@@ -1,0 +1,96 @@
+name: "Simular Despliegue Docker Swarm"
+
+# Workflow de prueba para simular un despliegue real en Docker Swarm (Portainer / Harbor)
+# Genera en consola todos los patrones y logs que audit-worker.yml necesita para crear la Ficha Técnica.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster:
+        description: "Cluster Docker Swarm destino"
+        type: choice
+        options:
+          - swarm-qa-cl
+          - swarm-prod-cl
+          - swarm-dev-cl
+        default: swarm-qa-cl
+      stack_name:
+        description: "Nombre del Stack (ej: checkout)"
+        type: string
+        default: "checkout"
+      image_tag:
+        description: "Tag de la imagen (ej: 2.8.1)"
+        type: string
+        default: "2.8.1"
+      simulate_failure:
+        description: "Simular fallo en el despliegue (True para probar captura de errores)"
+        type: boolean
+        default: false
+      failure_reason:
+        description: "Razón de fallo si simulate_failure es True"
+        type: choice
+        options:
+          - "CrashLoopBackOff: healthcheck failed HTTP 500 internal server error"
+          - "OOMKilled: task rejected due to memory limit reached in node worker-03"
+          - "ImagePullBackOff: unauthorized on hub.fif.tech repository omni"
+        default: "CrashLoopBackOff: healthcheck failed HTTP 500 internal server error"
+
+jobs:
+  deploy-to-swarm:
+    name: "Despliegue en Portainer / Docker Swarm"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "1. Autenticación en Harbor Registry"
+        run: |
+          echo "🔒 Conectando al Registry corporativo de Falabella..."
+          echo "Registry URL: hub.fif.tech"
+          echo "User: robot\$falabella-ci-deploy"
+          echo "WARNING! Using --password via the CLI is insecure. Use --password-stdin."
+          echo "Login Succeeded"
+          echo "Harbor project: omni"
+
+      - name: "2. Compilación y Etiquetado de Imagen"
+        run: |
+          IMAGE_FULL="hub.fif.tech/omni/${{ inputs.stack_name }}-api:${{ inputs.image_tag }}"
+          echo "📦 Preparando imagen Docker para Swarm..."
+          echo "Docker Image: ${{ inputs.stack_name }}-api"
+          echo "Docker Image Tag: ${{ inputs.image_tag }}"
+          echo "Url Harbor: $IMAGE_FULL"
+          echo "Digest: sha256:7f3a921d4c2b9a103847291038472910c2847291"
+          echo "Status: Image is up to date for $IMAGE_FULL"
+
+      - name: "3. Despliegue del Stack en Cluster Swarm"
+        run: |
+          echo "🐳 Iniciando orquestación en Portainer..."
+          echo "Swarm Cluster: ${{ inputs.cluster }}"
+          echo "Manager Node: leader-${{ inputs.cluster }}-node01.fif.tech"
+          echo "Stack File: docker-compose.prod.yml"
+          echo "Ejecutando comando oficial de despliegue:"
+          echo "docker stack deploy -c docker-compose.prod.yml ${{ inputs.stack_name }}"
+          echo "Creating network ${{ inputs.stack_name }}_default"
+          echo "Updating service ${{ inputs.stack_name }}_${{ inputs.stack_name }}-api (image: hub.fif.tech/omni/${{ inputs.stack_name }}-api:${{ inputs.image_tag }})"
+
+      - name: "4. Verificación de Convergencia y Healthcheck"
+        run: |
+          echo "⏳ Monitoreando convergencia de réplicas en ${{ inputs.cluster }}..."
+          
+          if [ "${{ inputs.simulate_failure }}" = "true" ]; then
+            echo "overall progress: 0 out of 3 tasks"
+            echo "1/3: rejected: \"task: non-zero exit (1): ${{ inputs.failure_reason }}\""
+            echo "2/3: rejected: \"task: non-zero exit (1): ${{ inputs.failure_reason }}\""
+            echo "3/3: rejected: \"task: non-zero exit (1): ${{ inputs.failure_reason }}\""
+            echo "::error::update paused due to failure in service ${{ inputs.stack_name }}_${{ inputs.stack_name }}-api: ${{ inputs.failure_reason }}"
+            echo "❌ Despliegue en Docker Swarm FALLIDO."
+            exit 1
+          else
+            echo "overall progress: 3 out of 3 tasks"
+            echo "1/3: running   [==================================>]"
+            echo "2/3: running   [==================================>]"
+            echo "3/3: running   [==================================>]"
+            echo "verify: Service converged successfully."
+            echo "🔎 Healthcheck: GET https://${{ inputs.stack_name }}.fif.tech/health -> 200 OK"
+            echo "Resultado del Deployment: Exitoso"
+            echo "✅ Despliegue en Docker Swarm completado con éxito."
+          fi

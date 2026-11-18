@@ -1,0 +1,39 @@
+name: "Trigger Central Audit"
+
+# Escucha cuando Release o la simulación de Swarm terminan (sea success o failure)
+on:
+  workflow_run:
+    workflows: ["Release", "Simular Despliegue Docker Swarm"]
+    types:
+      - completed
+
+jobs:
+  notify-central-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Despachar run_id al Repo Auditor
+        shell: bash
+        run: |
+          echo "Pipeline de deploy finalizado. Despachando metadata a Repo Auditor (mi-auditor-jira)..."
+
+          # Despierta a mi-auditor-jira pasándole el run_id y los datos base
+          curl -X POST https://api.github.com/repos/${{ github.repository_owner }}/mi-auditor-jira/dispatches \
+            -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -d '{
+              "event_type": "deployment_completed",
+              "client_payload": {
+                "repository": "${{ github.event.repository.name }}",
+                "full_repo": "${{ github.event.repository.full_name }}",
+                "run_id": "${{ github.event.workflow_run.id }}",
+                "actor": "${{ github.event.workflow_run.actor.login }}",
+                "branch": "${{ github.event.workflow_run.head_branch }}",
+                "commit_sha": "${{ github.event.workflow_run.head_sha }}",
+                "conclusion": "${{ github.event.workflow_run.conclusion }}",
+                "started_at": "${{ github.event.workflow_run.created_at }}",
+                "completed_at": "${{ github.event.workflow_run.updated_at }}",
+                "run_url": "${{ github.event.workflow_run.html_url }}"
+              }
+            }'
+            
+          echo "Evento despachado exitosamente a mi-auditor-jira."
